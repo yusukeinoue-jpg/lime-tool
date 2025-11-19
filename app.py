@@ -8,10 +8,13 @@ import numpy as np
 # ========== 設定エリア ==========
 st.set_page_config(page_title="Lime Retrieval Tool", layout="wide")
 
-# ★★★ ここでパスワードを設定 ★★★
+# ★★★ パスワード設定 ★★★
 PASSWORD = "lingo5-tightwad-duplicity-frying-backlit-subsystem-dealing-banknote-gorgeous-mankind-sandfish-moonrise-matted-wistful-goldsmith-electable-liftoff-uneatable-delicious-hangover" 
 
 TARGET_VALUE = "needs_retrieval"
+# CSVをダウンロードする画面
+DASHBOARD_URL = "https://admintool.lime.bike/fleet-dashboard/outsideWarehouse?region=MDH3CPXCIE5F3"
+# 個別車両の画面
 BASE_URL_TEMPLATE = "https://admintool.lime.bike/vehicle/{id}?region=MDH3CPXCIE5F3"
 
 def check_password():
@@ -31,11 +34,10 @@ def check_password():
         return False
     return True
 
-# パスワードが合っていない場合はここで止める
 if not check_password():
     st.stop()
 
-# ========== ここから下がメインアプリ ==========
+# ========== メインアプリ ==========
 
 def haversine_distance(lat1, lon1, lat2, lon2):
     R = 6371000
@@ -47,19 +49,26 @@ def haversine_distance(lat1, lon1, lat2, lon2):
     c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
     return R * c
 
-# タイトル
 st.title("🛴 Lime 回収マップ")
 
-# 1. ポート情報の読み込み
+# --- 手順1: リンクボタン ---
+st.write("### 手順")
+col1, col2 = st.columns([1, 1])
+with col1:
+    # type="primary" で目立つ色にする
+    st.link_button("🚀 1. Lime管理画面を開く (CSV取得)", DASHBOARD_URL, type="primary", use_container_width=True)
+
+# --- 手順2: ファイルアップロード ---
+with col2:
+    uploaded_file = st.file_uploader("2. CSVをここにアップロード", type="csv")
+
+# ポート情報の読み込み
 try:
     df_ports = pd.read_csv("Tokyo.csv")
     df_ports.columns = df_ports.columns.str.strip().str.lower()
 except:
-    st.error("⚠️ Tokyo.csv が見つかりません。")
+    st.error("⚠️ Tokyo.csv が見つかりません。GitHubにアップロードしてください。")
     st.stop()
-
-# 2. ファイルアップロード
-uploaded_file = st.file_uploader("LimeのCSVをアップロード", type="csv")
 
 if uploaded_file is not None:
     try:
@@ -108,7 +117,7 @@ if uploaded_file is not None:
 
                 st_folium(m, width=700, height=500)
 
-                st.subheader("📋 詳細リスト")
+                st.subheader("📋 詳細リスト (放置時間が長い順)")
                 for _, row in targets.iterrows():
                     df_ports['dist'] = haversine_distance(row['latitude'], row['longitude'], df_ports['latitude'], df_ports['longitude'])
                     nearest = df_ports.nsmallest(1, 'dist').iloc[0]
@@ -118,10 +127,10 @@ if uploaded_file is not None:
 
                     with st.expander(f"🚗 {row['plate number']} ({int(row['hours'])}時間前)"):
                         st.write(f"📍 最寄り: **{nearest['place_name']}** (距離: {nearest['dist']:.0f}m)")
-                        col1, col2 = st.columns(2)
-                        with col1:
+                        c1, c2 = st.columns(2)
+                        with c1:
                             st.link_button("Lime管理画面", lime_link)
-                        with col2:
+                        with c2:
                             st.link_button("Google Mapルート", map_link)
         else:
             st.error("CSVの形式が違います (operational state列なし)")
