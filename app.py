@@ -5,10 +5,37 @@ from streamlit_folium import st_folium
 from datetime import datetime
 import numpy as np
 
-# ========== 設定 ==========
+# ========== 設定エリア ==========
 st.set_page_config(page_title="Lime Retrieval Tool", layout="wide")
+
+# ★★★ ここでパスワードを設定 ★★★
+PASSWORD = "lingo5-tightwad-duplicity-frying-backlit-subsystem-dealing-banknote-gorgeous-mankind-sandfish-moonrise-matted-wistful-goldsmith-electable-liftoff-uneatable-delicious-hangover" 
+
 TARGET_VALUE = "needs_retrieval"
 BASE_URL_TEMPLATE = "https://admintool.lime.bike/vehicle/{id}?region=MDH3CPXCIE5F3"
+
+def check_password():
+    """パスワード認証機能"""
+    if "password_correct" not in st.session_state:
+        st.session_state.password_correct = False
+
+    if not st.session_state.password_correct:
+        st.title("🔒 ログイン")
+        input_pass = st.text_input("パスワードを入力してください", type="password")
+        if input_pass:
+            if input_pass == PASSWORD:
+                st.session_state.password_correct = True
+                st.rerun()
+            else:
+                st.error("パスワードが違います")
+        return False
+    return True
+
+# パスワードが合っていない場合はここで止める
+if not check_password():
+    st.stop()
+
+# ========== ここから下がメインアプリ ==========
 
 def haversine_distance(lat1, lon1, lat2, lon2):
     R = 6371000
@@ -23,12 +50,12 @@ def haversine_distance(lat1, lon1, lat2, lon2):
 # タイトル
 st.title("🛴 Lime 回収マップ")
 
-# 1. ポート情報の読み込み (リポジトリ内のTokyo.csv)
+# 1. ポート情報の読み込み
 try:
     df_ports = pd.read_csv("Tokyo.csv")
     df_ports.columns = df_ports.columns.str.strip().str.lower()
 except:
-    st.error("⚠️ Tokyo.csv が見つかりません。同じフォルダに置いてください。")
+    st.error("⚠️ Tokyo.csv が見つかりません。")
     st.stop()
 
 # 2. ファイルアップロード
@@ -39,14 +66,12 @@ if uploaded_file is not None:
         df = pd.read_csv(uploaded_file)
         df.columns = df.columns.str.strip().str.lower()
         
-        # フィルタリング
         if "operational state" in df.columns:
             targets = df[df["operational state"].str.lower() == TARGET_VALUE.lower()].copy()
             
             if targets.empty:
                 st.success("✅ 回収対象はありません！")
             else:
-                # 時間計算
                 if 'last ride' in targets.columns:
                     targets['last ride'] = pd.to_datetime(targets['last ride'], errors='coerce')
                     now = datetime.now()
@@ -60,44 +85,36 @@ if uploaded_file is not None:
                 # 地図作成
                 m = folium.Map(location=[targets.iloc[0]['latitude'], targets.iloc[0]['longitude']], zoom_start=14)
                 
-                # マーカー
                 for _, row in targets.iterrows():
                     v_lat, v_lon = row['latitude'], row['longitude']
-                    
-                    # 最寄りポート
                     df_ports['dist'] = haversine_distance(v_lat, v_lon, df_ports['latitude'], df_ports['longitude'])
                     nearest = df_ports.nsmallest(1, 'dist').iloc[0]
                     
-                    # 赤ピン
                     time_str = f"{int(row['hours'])}h前"
+                    
                     folium.Marker(
                         [v_lat, v_lon], 
                         popup=f"{row['plate number']}\n{time_str}", 
                         icon=folium.Icon(color='red', icon='bicycle', prefix='fa')
                     ).add_to(m)
                     
-                    # 青ピン
                     folium.Marker(
                         [nearest['latitude'], nearest['longitude']], 
                         popup=nearest['place_name'], 
                         icon=folium.Icon(color='blue', icon='info-sign')
                     ).add_to(m)
                     
-                    # 線
                     folium.PolyLine([[v_lat, v_lon], [nearest['latitude'], nearest['longitude']]], color="gray", dash_array='5,5').add_to(m)
 
-                # 地図表示
                 st_folium(m, width=700, height=500)
 
-                # リスト表示
                 st.subheader("📋 詳細リスト")
                 for _, row in targets.iterrows():
-                    # 最寄り再計算
                     df_ports['dist'] = haversine_distance(row['latitude'], row['longitude'], df_ports['latitude'], df_ports['longitude'])
                     nearest = df_ports.nsmallest(1, 'dist').iloc[0]
                     
                     lime_link = BASE_URL_TEMPLATE.format(id=row['id'])
-                    map_link = f"https://www.google.com/maps/dir/?api=1&destination={nearest['latitude']},{nearest['longitude']}&travelmode=walking"
+                    map_link = f"https://www.google.com/maps/dir/?api=1&origin={row['latitude']},{row['longitude']}&destination={nearest['latitude']},{nearest['longitude']}&travelmode=walking"
 
                     with st.expander(f"🚗 {row['plate number']} ({int(row['hours'])}時間前)"):
                         st.write(f"📍 最寄り: **{nearest['place_name']}** (距離: {nearest['dist']:.0f}m)")
@@ -106,7 +123,6 @@ if uploaded_file is not None:
                             st.link_button("Lime管理画面", lime_link)
                         with col2:
                             st.link_button("Google Mapルート", map_link)
-
         else:
             st.error("CSVの形式が違います (operational state列なし)")
             
